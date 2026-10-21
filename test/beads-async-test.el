@@ -128,7 +128,7 @@
         (should (= 2 (length beads-list--issues)))
         (should (equal "stats" (caar requests)))
         (funcall (nth 2 (car requests)) '((total_issues . 2)) nil)
-        (should (string-match-p "2" (nth 3 mode-line-format)))))))
+        (should (string-match-p "2 total" header-line-format))))))
 
 (ert-deftest beads-async-test-cancel-on-mode-change ()
   "Changing modes terminates the child and frees its output buffers."

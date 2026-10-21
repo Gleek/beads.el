@@ -50,9 +50,9 @@
   :group 'beads)
 
 (defcustom beads-list-show-header-stats t
-  "Whether to show statistics in the mode line.
+  "Whether to show statistics in the header line.
 When non-nil, displays issue counts (total, open, blocked, ready)
-in the mode line of the list view."
+in the header line of the list view."
   :type 'boolean
   :group 'beads-list)
 
@@ -342,13 +342,11 @@ Used to ensure refresh uses the correct project context.")
             (propertize (number-to-string blocked) 'face 'beads-list-header-count)
             (propertize (number-to-string ready) 'face 'beads-list-header-count))))
 
-(defun beads-list--update-mode-line (&optional stats)
-  "Update the mode line using asynchronously fetched STATS."
-  (setq mode-line-format
-        (if (and beads-list-show-header-stats stats)
-            `(" " mode-line-buffer-identification "  "
-              ,(beads-list--format-header-line stats))
-          (default-value 'mode-line-format)))
+(defun beads-list--update-header-line (&optional stats)
+  "Update the header line using asynchronously fetched STATS."
+  (setq header-line-format
+        (when (and beads-list-show-header-stats stats)
+          (beads-list--format-header-line stats)))
   (force-mode-line-update))
 
 (defvar-local beads-list--refresh-process nil
@@ -388,6 +386,8 @@ Ignore results if the originating buffer is gone or TOKEN is obsolete."
 
 \\{beads-list-mode-map}"
   (setq tabulated-list-format (beads-list--build-format))
+  ;; Reserve the header line for statistics; keep column labels in the table.
+  (setq-local tabulated-list-use-header-line nil)
   (setq tabulated-list-padding 2)
   (setq tabulated-list-sort-key (cons "Date" t))
   (setq tabulated-list-printer #'beads-list--print-entry)
@@ -435,8 +435,8 @@ SILENT suppresses the success message."
   (if beads-list-show-header-stats
       (beads-list--fetch
        token "stats" nil
-       (lambda (stats _err) (beads-list--update-mode-line stats)))
-    (beads-list--update-mode-line)))
+       (lambda (stats _err) (beads-list--update-header-line stats)))
+    (beads-list--update-header-line)))
 
 (defun beads-list--render (all-issues ready-ids silent)
   "Render ALL-ISSUES using READY-IDS, preserving the current view.

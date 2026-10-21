@@ -250,7 +250,7 @@
                 (accept-process-output nil 0.01)))
             (should-not beads-list--refresh-process)
             (should (equal (list id) (mapcar #'car tabulated-list-entries)))
-            (should (string-match-p "1" (nth 3 mode-line-format)))))))))
+            (should (string-match-p "1 total" header-line-format))))))))
 
 (ert-deftest beads-compat-test-cli-integration ()
   "Verify reports, readiness, labels, confirmed deletes, and duplicate merging."

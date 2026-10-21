@@ -18,6 +18,25 @@
 (require 'ert)
 (require 'beads-list)
 
+(ert-deftest beads-list-test-preserves-mode-line ()
+  "Statistics and table updates preserve the user's mode line."
+  (let ((beads-list-show-header-stats t))
+    (with-temp-buffer
+      (beads-list-mode)
+      (setq-local mode-line-format '("Custom mode line"))
+      (beads-list--update-header-line '((total_issues . 42)))
+      (beads-list--render nil nil t)
+      (should (equal mode-line-format '("Custom mode line")))
+      (should (string-match-p "42 total" header-line-format))
+      (should (tabulated-list-header-overlay-p))
+      (should (string-match-p "ID" (buffer-substring (point-min) (line-end-position))))
+      (let ((beads-list-show-header-stats nil))
+        (beads-list--update-header-line '((total_issues . 42)))
+        (should-not header-line-format))
+      (beads-list--update-header-line)
+      (should-not header-line-format)
+      (should (equal mode-line-format '("Custom mode line"))))))
+
 ;;; Formatter tests (no daemon needed)
 
 (ert-deftest beads-list-test-format-id ()

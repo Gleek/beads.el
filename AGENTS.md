@@ -1,175 +1,107 @@
 # Agent Instructions
 
-## Beads Version Compatibility
+## Current Compatibility
 
-This package is tested with **beads 0.49.1**. Check compatibility:
-- Changelog: https://github.com/steveyegge/beads/blob/main/CHANGELOG.md
-- Run `/beads-compat` to check installed version
+This fork has been validated with **bd 1.3.1** and **Emacs 30.2**.
+The original package targeted bd 0.49.1; do not assume its CLI contract still applies.
+Check `bd version` and `bd <command> --help` before changing integrations.
 
-## Issue Tracking with bd (beads)
+- The default connection strategy is `cli`. Let bd resolve the workspace from
+  the working directory and `BEADS_DIR`; a SQLite database file is not required.
+- Current bd has no legacy socket daemon, activity command, or mutations API.
+  Capability checks gate those features. Do not restore unconditional daemon
+  startup or pass legacy flags such as `--no-daemon` to modern commands.
+- CLI JSON can contain arrays, nested summaries, and stderr diagnostics.
+  Reuse `beads-backend--call-json` and existing normalization helpers.
+- Fetch the full issue list with `--all --limit 0` for Emacs-side filtering.
+  Ready work comes from `bd ready`, including its dependency checks.
+- Deletion needs `--force` after the UI's existing confirmation. Without it,
+  bd previews deletion without performing it.
+- Modern conflict resolution uses `bd conflicts show` and
+  `bd conflicts resolve --all --strategy ours|theirs` with explicit UI confirmation.
 
-**IMPORTANT**: This project uses **bd (beads)** for ALL issue tracking. Do NOT use markdown TODOs, task lists, or other tracking methods.
+## Fork and Upstream Contributions
 
-### Why bd?
+- `origin` is Umar's fork, `Gleek/beads.el`; local `main` tracks `origin/main`.
+- `upstream` is `ChristianTietze/beads.el`.
+- The broad compatibility PR (#1) was closed by the user because its scope was
+  too large. Do not reopen it or keep updating its branch as a submission.
+- Keep fixes on the fork. Future upstream PRs should each address one focused
+  problem and include relevant validation; discuss scope before opening them.
 
-- Dependency-aware: Track blockers and relationships between issues
-- Git-friendly: Auto-syncs to JSONL for version control
-- Agent-optimized: JSON output, ready work detection, discovered-from links
-- Prevents duplicate tracking systems and confusion
+## Emacs Behavior and User Configuration
 
-### Quick Start
+- Use standard Emacs faces (`warning`, `success`, `error`, font-lock faces,
+  `hl-line`) through inheritance. Do not hardcode colors or depend on Doom.
+- `beads-switch-project` offers known project.el roots with their own Beads
+  metadata or redirect. It excludes unrelated projects and telemetry-only
+  `.beads` directories. A missing project may need registration in project.el.
+- Issue-list auto-refresh defaults to 30 seconds in the library. A fetch failure
+  disables it in the affected buffer to avoid repeated error messages.
+- Umar disables polling in his Emacs configuration, in the Beads block in
+  `~/.config/emacs/core/core-ai.el`:
+  ```elisp
+  (setq beads-autoupdate-enable nil
+        beads-autoupdate-interval nil)
+  ```
+  Preserve this preference. Refresh manually with `g`. Activity follow mode is
+  a separate, explicit polling feature on CLIs that support it.
+- After changing Lisp, use `emacsclient` to load or evaluate it in the running
+  Emacs so the user can test immediately. Face default changes may require
+  `face-spec-set` to update existing faces while preserving user overrides.
 
-**Check for ready work:**
+## Issue Tracking
+
+Use the Beads skill at `~/.agents/skills/beads/SKILL.md` (or the project-local
+installation) and the `bd` CLI for all durable task tracking.
+
 ```bash
+bd prime
 bd ready --json
+bd create "Issue title" --type bug --priority 2 --description "Details" --json
+bd update <id> --claim --json
+bd close <id> --reason "Completed and validated" --json
 ```
 
-**Create new issues:**
-```bash
-bd create "Issue title" -t bug|feature|task -p 0-4 --json
-bd create "Issue title" -p 1 --deps discovered-from:bd-123 --json
-bd create "Subtask" --parent <epic-id> --json  # Hierarchical subtask (gets ID like epic-id.1)
-```
+Use `--json` for programmatic operations. Link discovered work with
+`--deps discovered-from:<parent-id>`. Do not create markdown task lists or ad hoc
+memory files; use `bd remember` for durable project memory.
 
-**Claim and update:**
-```bash
-bd update bd-42 --status in_progress --json
-bd update bd-42 --priority 1 --json
-```
+Issues live in a local Dolt database. `.beads/issues.jsonl` is a passive export,
+not an automatically imported/exported source of truth. Do not assume the old
+SQLite daemon's five-second auto-sync behavior or run `bd sync` as a generic
+Git synchronization step.
 
-**Complete work:**
-```bash
-bd close bd-42 --reason "Completed" --json
-```
+When committing issue state, export with `bd export -o <temporary-path>` and
+update the affected records in `.beads/issues.jsonl` alongside the change.
+Preserve unrelated records: a full export may normalize historical metadata.
+Keep database files, locks, and runtime backups out of commits.
 
-### Issue Types
+## Validation
 
-- `bug` - Something broken
-- `feature` - New functionality
-- `task` - Work item (tests, docs, refactoring)
-- `epic` - Large feature with subtasks
-- `chore` - Maintenance (dependencies, tooling)
-
-### Priorities
-
-- `0` - Critical (security, data loss, broken builds)
-- `1` - High (major features, important bugs)
-- `2` - Medium (default, nice-to-have)
-- `3` - Low (polish, optimization)
-- `4` - Backlog (future ideas)
-
-### Workflow for AI Agents
-
-1. **Check ready work**: `bd ready` shows unblocked issues
-2. **Claim your task**: `bd update <id> --status in_progress`
-3. **Work on it**: Implement, test, document
-4. **Discover new work?** Create linked issue:
-   - `bd create "Found bug" -p 1 --deps discovered-from:<parent-id>`
-5. **Complete**: `bd close <id> --reason "Done"`
-6. **Commit together**: Always commit the `.beads/issues.jsonl` file together with the code changes so issue state stays in sync with code state
-
-### Auto-Sync
-
-bd automatically syncs with git:
-- Exports to `.beads/issues.jsonl` after changes (5s debounce)
-- Imports from JSONL when newer (e.g., after `git pull`)
-- No manual export/import needed!
-
-### GitHub Copilot Integration
-
-If using GitHub Copilot, also create `.github/copilot-instructions.md` for automatic instruction loading.
-Run `bd onboard` to get the content, or see step 2 of the onboard instructions.
-
-### MCP Server (Recommended)
-
-If using Claude or MCP-compatible clients, install the beads MCP server:
+Run checks appropriate to the change. Core CLI changes need disposable-workspace
+integration tests; never exercise destructive tests against a user's database.
 
 ```bash
-pip install beads-mcp
+python3 scripts/test.py                # Unit tests; excludes integration tests
+python3 scripts/test.py --integration  # Isolated tests tagged :cli
+python3 scripts/lint.py                # Lint and byte-compilation
 ```
 
-Add to MCP config (e.g., `~/.config/claude/config.json`):
-```json
-{
-  "beads": {
-    "command": "beads-mcp",
-    "args": []
-  }
-}
+Batch Emacs needs `vui` and `markdown-mode` on its load path. On Umar's machine:
+
+```bash
+export EMACSLOADPATH="$HOME/.config/emacs/elpaca/builds/vui:$HOME/.config/emacs/elpaca/builds/markdown-mode:"
 ```
 
-Then use `mcp__beads__*` functions instead of CLI commands.
+The compatibility baseline passed 467 unit tests, 3 CLI integration tests, and
+lint/byte-compilation. Documentation-only changes need a diff review and
+`git diff --check`, rather than the full suite.
 
-### Managing AI-Generated Planning Documents
+## Session Completion
 
-AI assistants often create planning and design documents during development:
-- PLAN.md, IMPLEMENTATION.md, ARCHITECTURE.md
-- DESIGN.md, CODEBASE_SUMMARY.md, INTEGRATION_PLAN.md
-- TESTING_GUIDE.md, TECHNICAL_DESIGN.md, and similar files
-
-**Best Practice: Use a dedicated directory for these ephemeral files**
-
-**Recommended approach:**
-- Create a `history/` directory in the project root
-- Store ALL AI-generated planning/design docs in `history/`
-- Keep the repository root clean and focused on permanent project files
-- Only access `history/` when explicitly asked to review past planning
-
-**Example .gitignore entry (optional):**
-```
-# AI planning documents (ephemeral)
-history/
-```
-
-**Benefits:**
-- ✅ Clean repository root
-- ✅ Clear separation between ephemeral and permanent documentation
-- ✅ Easy to exclude from version control if desired
-- ✅ Preserves planning history for archeological research
-- ✅ Reduces noise when browsing the project
-
-### CLI Help
-
-Run `bd <command> --help` to see all available flags for any command.
-For example: `bd create --help` shows `--parent`, `--deps`, `--assignee`, etc.
-
-### Important Rules
-
-- ✅ Use bd for ALL task tracking
-- ✅ Always use `--json` flag for programmatic use
-- ✅ Link discovered work with `discovered-from` dependencies
-- ✅ Check `bd ready` before asking "what should I work on?"
-- ✅ Store AI planning docs in `history/` directory
-- ✅ Run `bd <cmd> --help` to discover available flags
-- ❌ Do NOT create markdown TODO lists
-- ❌ Do NOT use external issue trackers
-- ❌ Do NOT duplicate tracking systems
-- ❌ Do NOT clutter repo root with planning documents
-
-For more details, see README.md and QUICKSTART.md.
-
-## Landing the Plane (Session Completion)
-
-**When ending a work session**, you MUST complete ALL steps below. Work is NOT complete until `git push` succeeds.
-
-**MANDATORY WORKFLOW:**
-
-1. **File issues for remaining work** - Create issues for anything that needs follow-up
-2. **Run quality gates** (if code changed) - Tests, linters, builds
-3. **Update issue status** - Close finished work, update in-progress items
-4. **PUSH TO REMOTE** - This is MANDATORY:
-   ```bash
-   git pull --rebase
-   bd sync
-   git push
-   git status  # MUST show "up to date with origin"
-   ```
-5. **Clean up** - Clear stashes, prune remote branches
-6. **Verify** - All changes committed AND pushed
-7. **Hand off** - Provide context for next session
-
-**CRITICAL RULES:**
-- Work is NOT complete until `git push` succeeds
-- NEVER stop before pushing - that leaves work stranded locally
-- NEVER say "ready to push when you are" - YOU must push
-- If push fails, resolve and retry until it succeeds
+Close completed Beads issues, record follow-up work, run relevant checks, and
+review the diff. The user has authorized committing and pushing this work to
+their fork: pull with rebase, push to `origin`, and verify a clean working tree
+and an up-to-date tracking branch. Do not push to upstream or alter unrelated
+user changes or stashes. Report what changed and how it was validated.

@@ -227,6 +227,31 @@
              ,@body)
          (delete-directory root t)))))
 
+(ert-deftest beads-compat-test-async-refresh-integration ()
+  "Refresh a real disposable workspace, including readiness and statistics."
+  :tags '(:integration :cli)
+  (beads-compat-test--with-workspace
+    (let* ((issue (beads-client-create "Async fixture" :issue-type "task"))
+           (id (alist-get 'id issue)))
+      (with-temp-buffer
+        (beads-list-mode)
+        (let ((beads-list-show-header-stats t))
+          (setq beads-list--filter (beads-filter-ready))
+          (cl-letf (((symbol-function 'beads-client-list)
+                     (lambda (&rest _) (ert-fail "Synchronous list request")))
+                    ((symbol-function 'beads-client-ready)
+                     (lambda (&rest _) (ert-fail "Synchronous ready request")))
+                    ((symbol-function 'beads-client-stats)
+                     (lambda (&rest _) (ert-fail "Synchronous stats request"))))
+            (beads-list-refresh t)
+            (should (processp beads-list--refresh-process))
+            (let ((deadline (+ (float-time) 20)))
+              (while (and beads-list--refresh-process (< (float-time) deadline))
+                (accept-process-output nil 0.01)))
+            (should-not beads-list--refresh-process)
+            (should (equal (list id) (mapcar #'car tabulated-list-entries)))
+            (should (string-match-p "1" (nth 3 mode-line-format)))))))))
+
 (ert-deftest beads-compat-test-cli-integration ()
   "Verify reports, readiness, labels, confirmed deletes, and duplicate merging."
   :tags '(:integration :cli)

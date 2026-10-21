@@ -36,6 +36,10 @@ Check `bd version` and `bd <command> --help` before changing integrations.
 - `beads-switch-project` offers known project.el roots with their own Beads
   metadata or redirect. It excludes unrelated projects and telemetry-only
   `.beads` directories. A missing project may need registration in project.el.
+- Issue-list refresh uses asynchronous CLI processes for issues, readiness, and
+  header statistics, even with legacy daemon strategies. New refreshes cancel
+  older requests; buffer cleanup cancels pending work. Keep refresh callbacks
+  free of synchronous CLI calls and preserve existing rows while loading.
 - Issue-list auto-refresh defaults to 30 seconds in the library. A fetch failure
   disables it in the affected buffer to avoid repeated error messages.
 - Umar disables polling in his Emacs configuration, in the Beads block in
@@ -94,7 +98,7 @@ Batch Emacs needs `vui` and `markdown-mode` on its load path. On Umar's machine:
 export EMACSLOADPATH="$HOME/.config/emacs/elpaca/builds/vui:$HOME/.config/emacs/elpaca/builds/markdown-mode:"
 ```
 
-The compatibility baseline passed 467 unit tests, 3 CLI integration tests, and
+The compatibility baseline passed 473 unit tests, 4 CLI integration tests, and
 lint/byte-compilation. Documentation-only changes need a diff review and
 `git diff --check`, rather than the full suite.
 

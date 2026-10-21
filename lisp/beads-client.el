@@ -390,6 +390,19 @@ Returns parsed JSON output."
      (signal 'beads-client-error (cdr err)))))
 
 
+(defun beads-client-request-async (operation args callback)
+  "Run OPERATION with ARGS through the CLI without blocking Emacs.
+Call CALLBACK with (RESULT ERROR).  Errors use `beads-client-error'.
+Return the process, which can be cancelled with `beads-backend-cancel'.
+This API uses CLI transport even when legacy daemon mode is configured."
+  (condition-case err
+      (beads-backend-cli-execute-async
+       operation args
+       (lambda (result err)
+         (funcall callback result
+                  (when err (cons 'beads-client-error (cdr err))))))
+    (error (funcall callback nil (cons 'beads-client-error (cdr err))) nil)))
+
 (defun beads-client-health ()
   "Check database connectivity.
 Returns non-nil if healthy, signals error otherwise."

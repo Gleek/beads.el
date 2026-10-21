@@ -83,9 +83,10 @@
           (with-temp-buffer
             (beads-list-mode)
             (beads-autoupdate-mode 1)
-            (cl-letf (((symbol-function 'beads-client-list)
-                       (lambda (&rest _args)
-                         (signal 'beads-client-error '("no beads database found"))))
+            (cl-letf (((symbol-function 'beads-client-request-async)
+                       (lambda (_operation _args callback)
+                         (funcall callback nil
+                                  '(beads-client-error "no beads database found"))))
                       ((symbol-function 'message)
                        (lambda (format-string &rest args)
                          (push (apply #'format format-string args) messages))))
@@ -109,7 +110,8 @@
     (with-temp-buffer
       (beads-list-mode)
       (beads-autoupdate-mode 1)
-      (cl-letf (((symbol-function 'beads-client-list) (lambda (&rest _args) nil)))
+      (cl-letf (((symbol-function 'beads-client-request-async)
+                 (lambda (_operation _args callback) (funcall callback nil nil))))
         (beads-autoupdate--refresh)
         (should beads-autoupdate-mode)
         (should beads-autoupdate--timer)))))

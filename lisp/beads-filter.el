@@ -47,10 +47,21 @@ Optional CONFIG is a plist of additional filter settings."
 (defvar beads-filter--ready-ids 'unknown
   "Ready issue IDs, bound for each filter application.")
 
-(defun beads-filter-apply (filter issues)
-  "Apply FILTER to ISSUES, returning matching issues."
-  (let ((beads-filter--ready-ids 'unknown))
+(cl-defun beads-filter-apply (filter issues &optional (ready-ids 'unknown))
+  "Apply FILTER to ISSUES, returning matching issues.
+READY-IDS optionally supplies readiness fetched asynchronously, including nil
+for an empty ready set.  Otherwise fetch readiness lazily as needed."
+  (let ((beads-filter--ready-ids ready-ids))
     (seq-filter (plist-get filter :predicate) issues)))
+
+(defun beads-filter-needs-ready-p (filter)
+  "Return non-nil if FILTER or its components use ready-work data."
+  (let ((config (plist-get filter :config)))
+    (pcase (plist-get config :type)
+      ('ready t)
+      ((or 'composed 'composed-or)
+       (seq-some #'beads-filter-needs-ready-p (plist-get config :filters)))
+      ('negated (beads-filter-needs-ready-p (plist-get config :original))))))
 
 (defun beads-filter-by-status (status)
   "Create filter for STATUS (open, in_progress, closed, blocked)."

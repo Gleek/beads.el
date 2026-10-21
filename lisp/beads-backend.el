@@ -186,10 +186,8 @@ Keys are converted from snake_case to --kebab-case."
           (push (format "%s" value) flags)))))
     (nreverse flags)))
 
-(defun beads-backend-cli-execute (operation args &optional project-root)
-  "Execute CLI for OPERATION with ARGS, returning parsed JSON.
-PROJECT-ROOT overrides the working directory.
-Signals `beads-backend-error' on failure."
+(defun beads-backend--cli-command (operation args)
+  "Build the CLI command for OPERATION with ARGS."
   (let* ((args (mapcar (lambda (pair)
                          (cons (if (stringp (car pair))
                                    (intern (car pair))
@@ -201,18 +199,77 @@ Signals `beads-backend-error' on failure."
          (op-args (funcall (beads-backend-op-to-cli-args backend)
                            operation args))
          (extra (when-let ((fn (beads-backend-cli-extra-flags backend)))
-                  (funcall fn operation)))
-         (cmd-args (append extra op-args '("--json"))))
-    (let* ((default-directory (or project-root default-directory))
-           (output (beads-backend--call-json program cmd-args)))
-      (cond
-       ;; CLI commands accept multiple IDs, but the client promises one issue.
-       ((and (vectorp output) (member operation '("show" "update" "close")))
-        (when (> (length output) 0) (aref output 0)))
-       ((and (equal operation "stats") (alist-get 'summary output))
-        (alist-get 'summary output))
-       ((vectorp output) (append output nil))
-       (t output)))))
+                  (funcall fn operation))))
+    (append (list program) extra op-args '("--json"))))
+
+(defun beads-backend--normalize-result (operation output)
+  "Normalize CLI OUTPUT for OPERATION to the client contract."
+  (cond
+   ((and (vectorp output) (member operation '("show" "update" "close")))
+    (when (> (length output) 0) (aref output 0)))
+   ((and (equal operation "stats") (alist-get 'summary output))
+    (alist-get 'summary output))
+   ((vectorp output) (append output nil))
+   (t output)))
+
+(defun beads-backend-cli-execute (operation args &optional project-root)
+  "Execute CLI for OPERATION with ARGS, returning parsed JSON.
+PROJECT-ROOT overrides the working directory.
+Signals `beads-backend-error' on failure."
+  (let* ((default-directory (or project-root default-directory))
+         (command (beads-backend--cli-command operation args)))
+    (beads-backend--normalize-result
+     operation (beads-backend--call-json (car command) (cdr command)))))
+
+(defun beads-backend-cancel (process)
+  "Cancel an asynchronous PROCESS without delivering its callback."
+  (when (processp process)
+    (process-put process 'beads-cancelled t)
+    (when (process-live-p process)
+      (delete-process process))))
+
+(defun beads-backend-cli-execute-async (operation args callback)
+  "Run CLI OPERATION with ARGS asynchronously, returning its process.
+Call CALLBACK with (RESULT ERROR), where ERROR is a condition or nil.
+Use the current working directory and environment at launch.  Cancellation
+with `beads-backend-cancel' suppresses the callback."
+  (let* ((command (beads-backend--cli-command operation args))
+         (stdout (generate-new-buffer " *beads-stdout*"))
+         (stderr (generate-new-buffer " *beads-stderr*")))
+    (condition-case err
+        (make-process
+         :name "beads-cli" :command command :buffer stdout :stderr stderr
+         :connection-type 'pipe :coding 'utf-8-unix :noquery t
+         :sentinel
+         (lambda (process _event)
+           (when (memq (process-status process) '(exit signal))
+             (unwind-protect
+                 (unless (process-get process 'beads-cancelled)
+                   (let (result failure)
+                     (condition-case err
+                         (if (eq (process-exit-status process) 0)
+                             (setq result
+                                   (beads-backend--normalize-result
+                                    operation
+                                    (with-current-buffer stdout
+                                      (goto-char (point-min))
+                                      (let ((json-array-type 'vector)
+                                            (json-object-type 'alist)
+                                            (json-key-type 'symbol))
+                                        (json-read)))))
+                           (signal 'beads-backend-error
+                                   (list (format "CLI failed (%s): %s%s"
+                                                 (process-exit-status process)
+                                                 (with-current-buffer stdout (buffer-string))
+                                                 (with-current-buffer stderr (buffer-string))))))
+                       (error (setq failure err)))
+                     (funcall callback result failure)))
+               (kill-buffer stdout)
+               (kill-buffer stderr)))))
+      (error
+       (kill-buffer stdout)
+       (kill-buffer stderr)
+       (signal (car err) (cdr err))))))
 
 (defun beads-backend--call-json (program args)
   "Run PROGRAM with ARGS, parsing stdout as JSON separately from stderr."

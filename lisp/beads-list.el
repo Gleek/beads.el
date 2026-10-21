@@ -342,20 +342,46 @@ Used to ensure refresh uses the correct project context.")
             (propertize (number-to-string blocked) 'face 'beads-list-header-count)
             (propertize (number-to-string ready) 'face 'beads-list-header-count))))
 
-(defun beads-list--update-mode-line ()
-  "Update the mode line with current stats.
-Respects `beads-list-show-header-stats'."
-  (if beads-list-show-header-stats
-      (condition-case nil
-          (let ((stats (beads-client-stats)))
-            (setq mode-line-format
-                  `(" "
-                    mode-line-buffer-identification
-                    "  "
-                    ,(beads-list--format-header-line stats))))
-        (beads-client-error
-         (setq mode-line-format (default-value 'mode-line-format))))
-    (setq mode-line-format (default-value 'mode-line-format))))
+(defun beads-list--update-mode-line (&optional stats)
+  "Update the mode line using asynchronously fetched STATS."
+  (setq mode-line-format
+        (if (and beads-list-show-header-stats stats)
+            `(" " mode-line-buffer-identification "  "
+              ,(beads-list--format-header-line stats))
+          (default-value 'mode-line-format)))
+  (force-mode-line-update))
+
+(defvar-local beads-list--refresh-process nil
+  "Current asynchronous refresh process.")
+
+(defvar-local beads-list--refresh-token nil
+  "Identity of the latest refresh; invalidates superseded callbacks.")
+
+(defun beads-list--cancel-refresh ()
+  "Cancel any pending refresh and invalidate its callbacks."
+  (setq beads-list--refresh-token nil)
+  (beads-backend-cancel beads-list--refresh-process)
+  (setq beads-list--refresh-process nil))
+
+(defun beads-list--fetch (token operation args callback)
+  "Fetch OPERATION with ARGS for refresh TOKEN, then call CALLBACK.
+Ignore results if the originating buffer is gone or TOKEN is obsolete."
+  (let ((buffer (current-buffer)))
+    (setq beads-list--refresh-process
+          (beads-client-request-async
+           operation args
+           (lambda (result err)
+             (when (buffer-live-p buffer)
+               (with-current-buffer buffer
+                 (when (eq token beads-list--refresh-token)
+                   (setq beads-list--refresh-process nil)
+                   (funcall callback result err)))))))))
+
+(defun beads-list--refresh-error (err)
+  "Report refresh ERR, retaining existing rows and stopping auto-refresh."
+  (when (bound-and-true-p beads-autoupdate-mode)
+    (beads-autoupdate-mode -1))
+  (message "Failed to fetch issues: %s" (error-message-string err)))
 
 (define-derived-mode beads-list-mode tabulated-list-mode "Beads-List"
   "Major mode for displaying Beads issues in a table.
@@ -366,6 +392,8 @@ Respects `beads-list-show-header-stats'."
   (setq tabulated-list-sort-key (cons "Date" t))
   (setq tabulated-list-printer #'beads-list--print-entry)
   (add-hook 'tabulated-list-revert-hook #'beads-list-refresh nil t)
+  (add-hook 'kill-buffer-hook #'beads-list--cancel-refresh nil t)
+  (add-hook 'change-major-mode-hook #'beads-list--cancel-refresh nil t)
   (tabulated-list-init-header)
   (hl-line-mode 1)
   (beads-show-hint))
@@ -376,58 +404,83 @@ Respects `beads-list-show-header-stats'."
   (evil-make-overriding-map beads-list-mode-map 'normal))
 
 (defun beads-list-refresh (&optional silent)
-  "Fetch issues and refresh the display.
-When SILENT is non-nil, don't show the success message.
-On a client error, report the failure and disable automatic refresh in this
-buffer.  Re-enable `beads-autoupdate-mode' to resume automatic retries.
-Applies `beads-list--filter' if set, and `beads-list--show-only-marked' filter."
+  "Fetch issues asynchronously and refresh the display.
+When SILENT is non-nil, suppress the success message.  Keep existing rows
+while loading.  A newer refresh cancels the previous request; killing or
+changing the buffer's mode cancels pending work.  Fetch errors stop automatic
+refresh in this buffer."
   (interactive)
-  (let ((saved-id (tabulated-list-get-id))
-        (saved-line (line-number-at-pos))
-        (saved-start (window-start)))
-    (condition-case err
-        (let* ((all-issues (beads-client-list))
-               (issues (if beads-list--filter
-                           (beads-filter-apply beads-list--filter all-issues)
-                         all-issues))
-               (display-issues (if beads-list--show-only-marked
-                                   (seq-filter (lambda (issue)
-                                                 (member (alist-get 'id issue) beads-list--marked))
-                                               issues)
-                                 issues))
-               (effective-sort-mode (beads-list--effective-sort-mode))
-               (sorted-issues (if (eq effective-sort-mode 'sectioned)
-                                  (beads-list--sectioned-sort display-issues)
-                                display-issues))
-               (id-width (beads-list--max-id-width display-issues)))
-          (setq beads-list--issues (append issues nil))
-          (setq tabulated-list-format (beads-list--build-format id-width))
-          (tabulated-list-init-header)
-          (when (eq effective-sort-mode 'sectioned)
-            (setq tabulated-list-sort-key nil))
-          (setq tabulated-list-entries (beads-list-entries sorted-issues))
-          (tabulated-list-print t)
-          (beads-list--add-section-separators)
-          (if saved-id
-              (unless (beads-list-goto-id saved-id)
-                (goto-char (point-min))
-                (forward-line (1- (min saved-line (line-number-at-pos (point-max))))))
-            (goto-char (point-min)))
-          (when-let ((win (get-buffer-window (current-buffer))))
-            (set-window-start win (min saved-start (point-max))))
-          (beads-list--update-mode-line)
-          (unless silent
-            (let ((filter-msg (if beads-list--filter
-                                  (format " [%s]" (beads-filter-name beads-list--filter))
-                                ""))
-                  (sort-msg (if (eq effective-sort-mode 'sectioned)
-                                " (sectioned)"
-                              "")))
-              (message "Refreshed %d issues%s%s" (length beads-list--issues) filter-msg sort-msg))))
-      (beads-client-error
-       (when (bound-and-true-p beads-autoupdate-mode)
-         (beads-autoupdate-mode -1))
-       (message "Failed to fetch issues: %s" (error-message-string err))))))
+  (beads-list--cancel-refresh)
+  (let ((token (setq beads-list--refresh-token (list 'refresh))))
+    (beads-list--fetch
+     token "list" nil
+     (lambda (issues err)
+       (cond
+        (err (beads-list--refresh-error err))
+        ((beads-filter-needs-ready-p beads-list--filter)
+         (beads-list--fetch
+          token "ready" '((limit . 0))
+          (lambda (ready err)
+            (if err
+                (beads-list--refresh-error err)
+              (beads-list--finish-refresh
+               token issues (mapcar (lambda (issue) (alist-get 'id issue)) ready)
+               silent)))))
+        (t (beads-list--finish-refresh token issues nil silent)))))))
+
+(defun beads-list--finish-refresh (token issues ready-ids silent)
+  "Render ISSUES and READY-IDS for TOKEN, then fetch optional header stats.
+SILENT suppresses the success message."
+  (beads-list--render issues ready-ids silent)
+  (if beads-list-show-header-stats
+      (beads-list--fetch
+       token "stats" nil
+       (lambda (stats _err) (beads-list--update-mode-line stats)))
+    (beads-list--update-mode-line)))
+
+(defun beads-list--render (all-issues ready-ids silent)
+  "Render ALL-ISSUES using READY-IDS, preserving the current view.
+SILENT suppresses the success message."
+  (let* ((saved-id (tabulated-list-get-id))
+         (saved-line (line-number-at-pos))
+         (window (get-buffer-window (current-buffer)))
+         (saved-start (when window (window-start window)))
+         (issues (if beads-list--filter
+                     (beads-filter-apply beads-list--filter all-issues ready-ids)
+                   all-issues))
+         (display-issues (if beads-list--show-only-marked
+                             (seq-filter (lambda (issue)
+                                           (member (alist-get 'id issue) beads-list--marked))
+                                         issues)
+                           issues))
+         (effective-sort-mode (beads-list--effective-sort-mode))
+         (sorted-issues (if (eq effective-sort-mode 'sectioned)
+                            (beads-list--sectioned-sort display-issues)
+                          display-issues))
+         (id-width (beads-list--max-id-width display-issues)))
+    (setq beads-list--issues (append issues nil))
+    (setq tabulated-list-format (beads-list--build-format id-width))
+    (tabulated-list-init-header)
+    (when (eq effective-sort-mode 'sectioned)
+      (setq tabulated-list-sort-key nil))
+    (setq tabulated-list-entries (beads-list-entries sorted-issues))
+    (tabulated-list-print t)
+    (beads-list--add-section-separators)
+    (if saved-id
+        (unless (beads-list-goto-id saved-id)
+          (goto-char (point-min))
+          (forward-line (1- (min saved-line (line-number-at-pos (point-max))))))
+      (goto-char (point-min)))
+    (when (and saved-start (window-live-p window))
+      (set-window-start window (min saved-start (point-max))))
+    (unless silent
+      (let ((filter-msg (if beads-list--filter
+                            (format " [%s]" (beads-filter-name beads-list--filter))
+                          ""))
+            (sort-msg (if (eq effective-sort-mode 'sectioned)
+                          " (sectioned)"
+                        "")))
+        (message "Refreshed %d issues%s%s" (length beads-list--issues) filter-msg sort-msg)))))
 
 (defun beads-list-goto-id (id)
   "Move point to the line with issue ID.
@@ -1015,7 +1068,8 @@ creates a project-specific buffer."
     (with-current-buffer buffer
       (unless (eq major-mode 'beads-list-mode)
         (beads-list-mode))
-      (setq beads-list--project-root project-root)
+      (setq default-directory project-root
+            beads-list--project-root project-root)
       (beads-list-refresh))
     (switch-to-buffer buffer)))
 

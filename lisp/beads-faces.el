@@ -35,22 +35,22 @@
   :group 'beads-faces)
 
 (defface beads-status-in-progress
-  '((t :foreground "yellow"))
+  '((t :inherit warning))
   "Face for in_progress status."
   :group 'beads-faces)
 
 (defface beads-status-closed
-  '((t :foreground "green"))
+  '((t :inherit success))
   "Face for closed status."
   :group 'beads-faces)
 
 (defface beads-status-blocked
-  '((t :foreground "red"))
+  '((t :inherit error))
   "Face for blocked status."
   :group 'beads-faces)
 
 (defface beads-status-hooked
-  '((t :foreground "cyan"))
+  '((t :inherit font-lock-constant-face))
   "Face for hooked status (hook-based work assignment)."
   :group 'beads-faces)
 
@@ -66,27 +66,27 @@ Uses inverted error colors for maximum visibility."
   :group 'beads-faces)
 
 (defface beads-type-gate
-  '((t :foreground "orange red"))
+  '((t :inherit warning))
   "Face for gate type (checkpoint/approval gate)."
   :group 'beads-faces)
 
 (defface beads-type-convoy
-  '((t :foreground "deep sky blue"))
+  '((t :inherit font-lock-type-face))
   "Face for convoy type (grouped work items)."
   :group 'beads-faces)
 
 (defface beads-type-agent
-  '((t :foreground "medium purple"))
+  '((t :inherit font-lock-function-name-face))
   "Face for agent type (AI/automation tasks)."
   :group 'beads-faces)
 
 (defface beads-type-role
-  '((t :foreground "sea green"))
+  '((t :inherit font-lock-variable-name-face))
   "Face for role type (people/responsibility definitions)."
   :group 'beads-faces)
 
 (defface beads-type-rig
-  '((t :foreground "dark cyan"))
+  '((t :inherit font-lock-constant-face))
   "Face for rig type (Gas Town rig identity tracking)."
   :group 'beads-faces)
 

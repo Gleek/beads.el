@@ -71,27 +71,27 @@ Use this as value for `beads-activity-glyphs' in terminals without Unicode."
   :group 'beads-activity)
 
 (defface beads-activity-create
-  '((t :foreground "dodger blue"))
+  '((t :inherit font-lock-function-name-face))
   "Face for create events.")
 
 (defface beads-activity-update
-  '((t :foreground "yellow"))
+  '((t :inherit warning))
   "Face for update events.")
 
 (defface beads-activity-completed
-  '((t :foreground "green"))
+  '((t :inherit success))
   "Face for completed/closed events.")
 
 (defface beads-activity-blocked
-  '((t :foreground "red"))
+  '((t :inherit error))
   "Face for blocked/failed events.")
 
 (defface beads-activity-delete
-  '((t :foreground "red"))
+  '((t :inherit error))
   "Face for delete events.")
 
 (defface beads-activity-comment
-  '((t :foreground "gray"))
+  '((t :inherit shadow))
   "Face for comment events.")
 
 (defface beads-activity-timestamp

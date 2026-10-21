@@ -116,15 +116,15 @@ When an integer, the column width will not exceed this value."
   "Face for counts in header line.")
 
 (defface beads-list-deps-blocked
-  '((t :foreground "red"))
+  '((t :inherit beads-status-blocked))
   "Face for blocked dependency indicator.")
 
 (defface beads-list-deps-parent
-  '((t :foreground "yellow"))
+  '((t :inherit beads-status-in-progress))
   "Face for has-parent dependency indicator.")
 
 (defface beads-list-deps-child
-  '((t :foreground "green"))
+  '((t :inherit beads-status-closed))
   "Face for has-children dependency indicator.")
 
 (define-obsolete-face-alias 'beads-list-type-gate 'beads-type-gate "0.47")
@@ -134,10 +134,7 @@ When an integer, the column width will not exceed this value."
 (define-obsolete-face-alias 'beads-list-type-rig 'beads-type-rig "0.47")
 
 (defface beads-list-row-p0
-  '((((class color) (background light))
-     :background "#ffe0e0" :extend t)
-    (((class color) (background dark))
-     :background "#4a1a1a" :extend t))
+  '((t :inherit hl-line :extend t))
   "Face for entire row of P0 priority issues.
 Uses `:extend t' to highlight to end of line."
   :group 'beads-list)

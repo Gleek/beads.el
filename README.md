@@ -89,6 +89,7 @@ With the built-in `:vc` keyword:
 
 - `M-x beads` or `M-x beads-list` - Open the issue list
 - `M-x beads-project-list` - Open issue list for current project
+- `M-x beads-switch-project` - Choose a project, then open its issue list
 - `M-x beads-activity` - Open the activity feed
 - `M-x beads-stale` - Show stale issues (not updated recently)
 - `M-x beads-orphans` - Show orphaned issues (referenced in commits but not closed)

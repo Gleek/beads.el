@@ -77,10 +77,19 @@ otherwise returns the default buffer name."
   "Open beads list for current project.
 If not in a project, opens the default beads list."
   (interactive)
+  (require 'beads)
   (if-let ((root (beads-project-root)))
       (let ((default-directory root))
         (beads-list))
     (beads-list)))
+
+;;;###autoload
+(defun beads-switch-project (directory)
+  "Choose a project DIRECTORY, then open its Beads issue list.
+Offer known project roots, with the option to select another directory."
+  (interactive (list (project-prompt-project-dir)))
+  (let ((default-directory (file-name-as-directory (expand-file-name directory))))
+    (beads-project-list)))
 
 (defun beads-project--setup-switch-command ()
   "Add beads-project-list to project-switch-commands if configured."

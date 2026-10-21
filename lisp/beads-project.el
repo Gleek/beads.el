@@ -25,6 +25,7 @@
 ;;; Code:
 
 (require 'project)
+(require 'seq)
 
 (declare-function beads-list "beads-list")
 
@@ -83,11 +84,24 @@ If not in a project, opens the default beads list."
         (beads-list))
     (beads-list)))
 
+(defun beads-project--known-roots ()
+  "Return known project roots with an initialized Beads workspace."
+  (seq-filter
+   (lambda (root)
+     (let ((dir (expand-file-name ".beads/" root)))
+       (or (file-exists-p (expand-file-name "metadata.json" dir))
+           (file-exists-p (expand-file-name "redirect" dir)))))
+   (project-known-project-roots)))
+
 ;;;###autoload
 (defun beads-switch-project (directory)
   "Choose a project DIRECTORY, then open its Beads issue list.
-Offer known project roots, with the option to select another directory."
-  (interactive (list (project-prompt-project-dir)))
+Offer only known projects with an initialized Beads workspace."
+  (interactive
+   (let ((roots (beads-project--known-roots)))
+     (unless roots
+       (user-error "No known projects have a Beads workspace"))
+     (list (completing-read "Beads project: " roots nil t))))
   (let ((default-directory (file-name-as-directory (expand-file-name directory))))
     (beads-project-list)))
 

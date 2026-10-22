@@ -10,6 +10,8 @@
 - **Asynchronous issue-list refresh:** fetches issues, readiness, and statistics
   without waiting for CLI commands on Emacs's main thread. Keeps existing rows
   visible while loading and cancels superseded requests.
+- **Header-line statistics:** issue counts appear in the header line, preserving
+  your normal mode line. Column headings remain in the table.
 - **Less error noise:** a failed automatic refresh stops polling in that buffer
   instead of repeatedly reporting the same error. Manual refresh remains available
   with `g`.

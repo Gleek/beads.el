@@ -2,6 +2,27 @@
 
 [![Codeberg Repository](https://img.shields.io/badge/Codeberg-Repository-2185D0?logo=codeberg&logoColor=white)](https://codeberg.org/ctietze/beads.el)
 
+## Changes in this fork
+
+- **Current Beads CLI support:** tested with `bd 1.3.1` and Emacs 30.2.
+  Uses CLI workspace discovery for Dolt databases without requiring the old
+  SQLite database or socket daemon.
+- **Asynchronous issue-list refresh:** fetches issues, readiness, and statistics
+  without waiting for CLI commands on Emacs's main thread. Keeps existing rows
+  visible while loading and cancels superseded requests.
+- **Less error noise:** a failed automatic refresh stops polling in that buffer
+  instead of repeatedly reporting the same error. Manual refresh remains available
+  with `g`.
+- **Beads project picker:** `M-x beads-switch-project` opens a known Emacs project
+  with an initialized Beads workspace, excluding unrelated projects.
+- **Theme-aware colors:** status, priority, dependency, and activity faces inherit
+  standard Emacs faces, with no Doom dependency or fixed neon colors.
+- **Compatibility and UI fixes:** corrected JSON handling, ready and label filters,
+  grouped counts, confirmed deletion, conflict resolution, and detail/form refresh.
+  Unavailable legacy commands report their limitations or are hidden from menus.
+- **Regression coverage:** 473 unit tests and 4 isolated CLI integration tests pass,
+  alongside lint and byte-compilation checks.
+
 ## Overview
 
 beads.el provides an Emacs interface to the [Beads](https://github.com/steveyegge/beads) issue tracking system.

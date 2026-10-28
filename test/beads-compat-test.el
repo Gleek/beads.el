@@ -204,6 +204,71 @@
       (when (get-buffer "*Beads Form: clear-fixture*")
         (kill-buffer "*Beads Form: clear-fixture*")))))
 
+(ert-deftest beads-compat-test-close-refreshes-only-own-workspace ()
+  "Closing from a detail view refreshes its workspace and preserves other lists."
+  (let* ((root (make-temp-file "beads-close-test-" t))
+         (project-a (expand-file-name "a/" root))
+         (project-b (expand-file-name "b/" root))
+         (nested (expand-file-name "internal/" project-a))
+         (a (generate-new-buffer " *beads-close-a*"))
+         (b (generate-new-buffer " *beads-close-b*"))
+         (bare (generate-new-buffer " *beads-close-bare*"))
+         (issue '((id . "close-fixture") (title . "Close me") (status . "open")
+                  (priority . 2) (issue_type . "task")))
+         (closed (cons '(status . "closed") (assq-delete-all 'status (copy-alist issue))))
+         (beads-detail-use-vui nil) (beads-autoupdate-enable nil) (beads-verbose nil)
+         refreshed update)
+    (unwind-protect
+        (progn
+          (make-directory (expand-file-name ".beads" project-a) t)
+          (make-directory (expand-file-name ".beads" project-b) t)
+          (make-directory nested t)
+          (cl-mapc (lambda (buffer directory)
+                     (with-current-buffer buffer
+                       (beads-list-mode)
+                       (setq default-directory directory)))
+                   (list a b bare) (list project-a project-b root))
+          (with-current-buffer b (beads-list--render (list issue) nil t))
+          (with-current-buffer a
+            (beads-list--render (list issue) nil t)
+            (let ((default-directory nested))
+              (cl-letf (((symbol-function 'display-buffer) (lambda (&rest _) nil)))
+                (beads-detail-open issue))))
+          (cl-letf (((symbol-function 'completing-read) (lambda (&rest _) "closed"))
+                    ((symbol-function 'beads-client-update)
+                     (lambda (&rest args) (setq update (cons default-directory args)) closed))
+                    ((symbol-function 'beads-client-show) (lambda (_id) closed))
+                    ((symbol-function 'beads-list-refresh)
+                     (lambda (&rest _)
+                       (push (current-buffer) refreshed)
+                       (beads-list--render (list closed) nil t))))
+            (with-current-buffer "*Beads Detail: close-fixture*"
+              (beads-detail-edit-status)))
+          (should (equal (list nested "close-fixture" :status "closed") update))
+          (should (equal (list a) refreshed))
+          (with-current-buffer a
+            (beads-list-goto-id "close-fixture")
+            (should (equal "closed" (alist-get 'status (beads-list--get-issue-at-point)))))
+          (with-current-buffer b
+            (beads-list-goto-id "close-fixture")
+            (should (equal "open" (alist-get 'status (beads-list--get-issue-at-point))))))
+      (dolist (buffer (list a b bare (get-buffer "*Beads Detail: close-fixture*")))
+        (when (buffer-live-p buffer) (kill-buffer buffer)))
+      (delete-directory root t))))
+
+(ert-deftest beads-compat-test-preview-switches-workspace ()
+  "The reusable preview adopts the project of the newly displayed issue."
+  (let ((beads-detail-use-vui nil) (beads-verbose nil))
+    (unwind-protect
+        (cl-letf (((symbol-function 'display-buffer) (lambda (&rest _) nil)))
+          (dolist (directory (list temporary-file-directory default-directory))
+            (let ((default-directory directory))
+              (beads-detail-show '((id . "preview-fixture") (title . "Preview")
+                                   (status . "open") (priority . 2) (issue_type . "task"))))
+            (with-current-buffer "*Beads Preview*"
+              (should (equal directory default-directory)))))
+      (when (get-buffer "*Beads Preview*") (kill-buffer "*Beads Preview*")))))
+
 (defmacro beads-compat-test--with-workspace (&rest body)
   "Run BODY in a disposable bd workspace, never the user's project database."
   (declare (indent 0))

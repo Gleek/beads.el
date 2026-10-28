@@ -180,7 +180,8 @@ Derives from `vui-mode' and inherits keybindings from `beads-detail-mode'.
 (defun beads-detail-open (issue)
   "Open ISSUE in a dedicated detail buffer in bottom window.
 Creates a unique buffer per issue and focuses it."
-  (let* ((id (alist-get 'id issue))
+  (let* ((directory default-directory)
+         (id (alist-get 'id issue))
          (buffer-name (format "*Beads Detail: %s*" id))
          (buffer (get-buffer-create buffer-name)))
     (with-current-buffer buffer
@@ -192,7 +193,8 @@ Creates a unique buffer per issue and focuses it."
           (erase-buffer)
           (beads-detail--render issue)
           (goto-char (point-min))))
-      (setq beads-detail--current-issue-id id
+      (setq default-directory directory
+            beads-detail--current-issue-id id
             beads-detail--current-issue issue))
     (let ((window (display-buffer buffer
                                   '((display-buffer-reuse-mode-window
@@ -205,7 +207,8 @@ Creates a unique buffer per issue and focuses it."
 (defun beads-detail-show (issue)
   "Display ISSUE in preview buffer (for preview mode).
 Uses a single reusable buffer in a side window without focusing."
-  (let* ((id (alist-get 'id issue))
+  (let* ((directory default-directory)
+         (id (alist-get 'id issue))
          (buffer (get-buffer-create "*Beads Preview*")))
     (with-current-buffer buffer
       (if beads-detail-use-vui
@@ -216,19 +219,22 @@ Uses a single reusable buffer in a side window without focusing."
           (erase-buffer)
           (beads-detail--render issue)
           (goto-char (point-min))))
-      (setq beads-detail--current-issue-id id
+      (setq default-directory directory
+            beads-detail--current-issue-id id
             beads-detail--current-issue issue))
     (display-buffer buffer '((display-buffer-in-side-window)
                              (side . right)
                              (window-width . 0.4)))))
 
 (defun beads-detail--refresh-list-buffers ()
-  "Refresh all beads-list-mode buffers."
-  (dolist (buf (buffer-list))
-    (when (and (buffer-live-p buf)
-               (eq (buffer-local-value 'major-mode buf) 'beads-list-mode))
+  "Refresh issue lists belonging to the current Beads workspace."
+  (when-let ((root (locate-dominating-file default-directory ".beads")))
+    (dolist (buf (buffer-list))
       (with-current-buffer buf
-        (beads-list-refresh)))))
+        (when (derived-mode-p 'beads-list-mode)
+          (when-let ((list-root (locate-dominating-file default-directory ".beads")))
+            (when (file-equal-p root list-root)
+              (beads-list-refresh))))))))
 
 (defun beads-detail-refresh ()
   "Re-fetch and redisplay current issue."

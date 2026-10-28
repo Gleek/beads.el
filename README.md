@@ -16,13 +16,14 @@
   instead of repeatedly reporting the same error. Manual refresh remains available
   with `g`.
 - **Beads project picker:** `M-x beads-switch-project` opens a known Emacs project
-  with an initialized Beads workspace, excluding unrelated projects.
+  with an initialized Beads workspace, excluding unrelated projects. Issue caches
+  and edit-triggered refreshes stay isolated by workspace.
 - **Theme-aware colors:** status, priority, dependency, and activity faces inherit
   standard Emacs faces, with no Doom dependency or fixed neon colors.
 - **Compatibility and UI fixes:** corrected JSON handling, ready and label filters,
   grouped counts, confirmed deletion, conflict resolution, and detail/form refresh.
   Unavailable legacy commands report their limitations or are hidden from menus.
-- **Regression coverage:** 473 unit tests and 4 isolated CLI integration tests pass,
+- **Regression coverage:** 477 unit tests and 4 isolated CLI integration tests pass,
   alongside lint and byte-compilation checks.
 
 ## Overview

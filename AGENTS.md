@@ -36,6 +36,8 @@ Check `bd version` and `bd <command> --help` before changing integrations.
 - `beads-switch-project` offers known project.el roots with their own Beads
   metadata or redirect. It excludes unrelated projects and telemetry-only
   `.beads` directories. A missing project may need registration in project.el.
+- Keep issue caches buffer-local and detail-triggered refreshes scoped to the
+  same workspace. Reused detail/preview buffers must adopt the source directory.
 - Issue-list refresh uses asynchronous CLI processes for issues, readiness, and
   header statistics, even with legacy daemon strategies. New refreshes cancel
   older requests; buffer cleanup cancels pending work. Keep refresh callbacks
@@ -98,7 +100,7 @@ Batch Emacs needs `vui` and `markdown-mode` on its load path. On Umar's machine:
 export EMACSLOADPATH="$HOME/.config/emacs/elpaca/builds/vui:$HOME/.config/emacs/elpaca/builds/markdown-mode:"
 ```
 
-The compatibility baseline passed 473 unit tests, 4 CLI integration tests, and
+The compatibility baseline passed 477 unit tests, 4 CLI integration tests, and
 lint/byte-compilation. Documentation-only changes need a diff review and
 `git diff --check`, rather than the full suite.
 

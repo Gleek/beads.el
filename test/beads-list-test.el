@@ -18,6 +18,9 @@
 (require 'ert)
 (require 'beads-list)
 
+(defvar beads-autoupdate-enable)
+(defvar beads-verbose)
+
 (ert-deftest beads-list-test-preserves-mode-line ()
   "Statistics and table updates preserve the user's mode line."
   (let ((beads-list-show-header-stats t))
@@ -36,6 +39,33 @@
       (beads-list--update-header-line)
       (should-not header-line-format)
       (should (equal mode-line-format '("Custom mode line"))))))
+
+(ert-deftest beads-list-test-project-cache-isolation ()
+  "Refreshing another project preserves row lookup and local re-rendering."
+  (let ((a (generate-new-buffer " *beads-cache-a*"))
+        (b (generate-new-buffer " *beads-cache-b*"))
+        (beads-autoupdate-enable nil) (beads-verbose nil))
+    (unwind-protect
+        (progn
+          (with-current-buffer a
+            (beads-list-mode)
+            (beads-list--render
+             '(((id . "a-1") (title . "A") (status . "open")
+                (priority . 2) (issue_type . "task"))) nil t))
+          (with-current-buffer b
+            (beads-list-mode)
+            (beads-list--render
+             '(((id . "b-1") (title . "B") (status . "closed")
+                (priority . 1) (issue_type . "bug"))) nil t))
+          (with-current-buffer a
+            (beads-list-goto-id "a-1")
+            (should (equal "a-1" (alist-get 'id (beads-list--get-issue-at-point))))
+            (beads-list--render beads-list--issues nil t)
+            (should (equal '("a-1") (mapcar #'car tabulated-list-entries))))
+          (with-current-buffer b
+            (should (equal '("b-1") (mapcar #'car tabulated-list-entries)))))
+      (kill-buffer a)
+      (kill-buffer b))))
 
 ;;; Formatter tests (no daemon needed)
 

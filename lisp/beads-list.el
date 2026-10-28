@@ -214,7 +214,7 @@ Automatically prepends the mark indicator."
               (if def (nth 0 def) "")))
           beads-list-columns))
 
-(defvar beads-list--issues nil
+(defvar-local beads-list--issues nil
   "Cached list of issues for current buffer.")
 
 (defvar-local beads-list--filter nil

@@ -812,7 +812,7 @@
         (let ((text (buffer-string)))
           (should (string-match-p "Parent:.*root" text))
           (should (string-match-p "Subtasks:\n.*child.*Done task.*closed" text))
-          (should (string-match-p "Dependents: *\n.*blocked" text))
+          (should (string-match-p "^Dependents: *\n.*blocked" text))
           (should-not (string-match-p "Depends on:" text)))))))
 
 (ert-deftest beads-detail-test-view-children-current-buffer ()

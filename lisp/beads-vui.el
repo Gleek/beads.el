@@ -359,7 +359,8 @@ When EDITABLE is non-nil, show edit buttons. ON-REFRESH called after edits."
   (let ((children (beads-client-issue-relations issue 'dependents t))
         (deps (beads-client-issue-relations issue 'dependencies))
         (dependents (beads-client-issue-relations issue 'dependents)))
-    (vui-fragment
+    (vui-vstack
+     :spacing 1
      (when children
        (vui-vstack
         (vui-text "Subtasks:" :face 'bold)

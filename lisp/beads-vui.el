@@ -232,7 +232,7 @@ When EDITABLE is non-nil, show edit buttons. ON-REFRESH called after edits."
         (created (alist-get 'created_at issue))
         (updated (alist-get 'updated_at issue))
         (labels (alist-get 'labels issue))
-        (parent-id (alist-get 'parent_id issue)))
+        (parent-id (beads-client-issue-parent issue)))
     (vui-vstack
      (vui-hstack
       :spacing 5
@@ -356,9 +356,16 @@ When EDITABLE is non-nil, show edit buttons. ON-REFRESH called after edits."
 (vui-defcomponent beads-vui-relationships (issue)
   "Display dependencies and dependents for ISSUE."
   :render
-  (let ((deps (append (alist-get 'dependencies issue) nil))
-        (dependents (append (alist-get 'dependents issue) nil)))
+  (let ((children (beads-client-issue-relations issue 'dependents t))
+        (deps (beads-client-issue-relations issue 'dependencies))
+        (dependents (beads-client-issue-relations issue 'dependents)))
     (vui-fragment
+     (when children
+       (vui-vstack
+        (vui-text "Subtasks:" :face 'bold)
+        (vui-list children
+                  (lambda (d) (vui-component 'beads-vui-dep-link :dep d))
+                  (lambda (d) (alist-get 'id d)))))
      (when (and deps (> (length deps) 0))
        (vui-vstack
         (vui-text "Depends on:" :face 'bold)

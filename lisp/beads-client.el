@@ -427,6 +427,19 @@ Returns issue object."
     (signal 'beads-client-error (list "Issue ID required")))
   (beads-client-request "show" `((id . ,id))))
 
+(defun beads-client-issue-parent (issue)
+  "Return the parent ID of ISSUE across CLI versions."
+  (or (alist-get 'parent issue) (alist-get 'parent_id issue)))
+
+(defun beads-client-issue-relations (issue field &optional children)
+  "Return ISSUE's FIELD relations, separating CHILDREN from other relations.
+Parent-child dependencies are represented by the parent link instead."
+  (seq-filter
+   (lambda (relation)
+     (eq (equal (alist-get 'dependency_type relation) "parent-child")
+         (and children t)))
+   (append (alist-get field issue) nil)))
+
 (defun beads-client-ready (&optional filters)
   "Get unblocked issues with optional FILTERS.
 FILTERS is a plist with keys like :assignee, :priority, :limit, :sort-policy,

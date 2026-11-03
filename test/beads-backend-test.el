@@ -170,9 +170,13 @@
 
 (ert-deftest beads-backend-test-bd-show-args ()
   "Test bd backend show operation CLI args."
-  (should (equal (beads-backend-bd--operation-to-cli-args
-                  "show" '((id . "bd-001")))
-                 '("show" "bd-001"))))
+  (dolist (supported '(nil t))
+    (cl-letf (((symbol-function 'beads-backend-cli-supports-option-p)
+               (lambda (&rest _) supported)))
+      (should (equal (beads-backend-bd--operation-to-cli-args
+                      "show" '((id . "bd-001")))
+                     (append '("show" "bd-001")
+                             (when supported '("--include-dependents"))))))))
 
 (ert-deftest beads-backend-test-bd-create-args ()
   "Test bd backend create operation CLI args."
@@ -350,7 +354,18 @@
             (should (equal (alist-get 'status (beads-client-close id "Verified")) "closed"))
             ;; Closed issues remain available for the Emacs client-side filters.
             (should (= 1 (length (beads-client-list))))
-            (should (= 1 (length (beads-client-list '(:status "closed")))))))
+            (should (= 1 (length (beads-client-list '(:status "closed")))))
+            (let* ((epic (beads-client-create "Parent epic" :issue-type "epic"))
+                   (epic-id (alist-get 'id epic))
+                   (child (beads-client-create "Child task" :parent epic-id))
+                   (child-id (alist-get 'id child)))
+              (beads-client-close child-id "Verified")
+              (should (equal (beads-client-issue-parent (beads-client-show child-id)) epic-id))
+              (let ((children (beads-client-issue-relations
+                               (beads-client-show epic-id) 'dependents t)))
+                (should (equal (mapcar (lambda (child) (alist-get 'id child)) children)
+                               (list child-id)))
+                (should (equal (alist-get 'status (car children)) "closed"))))))
       (delete-directory root t))))
 
 (provide 'beads-backend-test)

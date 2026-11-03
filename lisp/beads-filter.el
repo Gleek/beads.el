@@ -151,7 +151,7 @@ Enables epic-scoped views by filtering to children of a specific issue."
   (beads-filter-make
    (format "parent:%s" parent-id)
    (lambda (issue)
-     (string= (alist-get 'parent_id issue) parent-id))
+     (string= (beads-client-issue-parent issue) parent-id))
    (list :type 'parent :value parent-id)))
 
 (defun beads-filter-not-closed ()

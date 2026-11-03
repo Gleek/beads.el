@@ -17,6 +17,7 @@
 
 (require 'ert)
 (require 'beads-detail)
+(require 'beads-list)
 
 ;;; Face definition tests (no daemon needed)
 
@@ -792,6 +793,42 @@
         (beads-detail--render issue)
         (let ((buffer-content (buffer-string)))
           (should (string-match-p "\\*\\*bold\\*\\* comment" buffer-content)))))))
+
+(ert-deftest beads-detail-test-subtasks-and-parent ()
+  "Separate children, blockers and the modern parent field in both renderers."
+  (let ((issue '((id . "epic") (title . "Epic") (priority . 2)
+                 (parent . "root")
+                 (dependencies . [((id . "root") (dependency_type . "parent-child"))])
+                 (dependents . [((id . "child") (title . "Done task")
+                                 (status . "closed") (dependency_type . "parent-child"))
+                                ((id . "blocked") (dependency_type . "blocks"))]))))
+    (dolist (vui '(nil t))
+      (with-temp-buffer
+        (if vui
+            (progn
+              (require 'beads-vui)
+              (beads-detail--render-vui (current-buffer) issue))
+          (beads-detail--render issue))
+        (let ((text (buffer-string)))
+          (should (string-match-p "Parent:.*root" text))
+          (should (string-match-p "Subtasks:\n.*child.*Done task.*closed" text))
+          (should (string-match-p "Dependents: *\n.*blocked" text))
+          (should-not (string-match-p "Depends on:" text)))))))
+
+(ert-deftest beads-detail-test-view-children-current-buffer ()
+  "The children shortcut filters the actual project list, including closed tasks."
+  (let ((beads-detail--current-issue '((id . "epic"))))
+    (with-temp-buffer
+      (cl-letf (((symbol-function 'beads-list) (lambda () nil))
+                ((symbol-function 'beads-list-refresh) (lambda (&rest _) nil)))
+        (beads-detail-view-children)
+        (should (equal (mapcar (lambda (issue) (alist-get 'id issue))
+                              (beads-filter-apply
+                               beads-list--filter
+                               '(((id . "child") (parent . "epic") (status . "closed"))
+                                 ((id . "legacy") (parent_id . "epic"))
+                                 ((id . "other") (parent . "elsewhere")))))
+                       '("child" "legacy")))))))
 
 (provide 'beads-detail-test)
 ;;; beads-detail-test.el ends here

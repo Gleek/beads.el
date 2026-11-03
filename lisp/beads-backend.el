@@ -155,6 +155,22 @@ BACKEND defaults to the current project's backend."
                  beads-backend--command-cache)
       cached)))
 
+(defun beads-backend-cli-supports-option-p (command option &optional backend)
+  "Return whether COMMAND advertises OPTION in BACKEND's CLI help."
+  (let* ((program (beads-backend-cli-program-path backend))
+         (key (list program command option
+                    (file-attribute-modification-time (file-attributes program))))
+         (cached (gethash key beads-backend--command-cache 'unknown)))
+    (if (eq cached 'unknown)
+        (puthash key
+                 (with-temp-buffer
+                   (and (eq 0 (call-process program nil t nil command "--help"))
+                        (progn (goto-char (point-min))
+                               (search-forward option nil t))
+                        t))
+                 beads-backend--command-cache)
+      cached)))
+
 (defun beads-backend--build-cli-args (command args allowed-keys)
   "Build CLI args for COMMAND from ARGS, filtering by ALLOWED-KEYS."
   (append (list command)

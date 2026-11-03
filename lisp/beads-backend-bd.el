@@ -58,7 +58,10 @@
                                  label limit title_contains parent)))))
     ("show"
      (let ((id (alist-get 'id args)))
-       (list "show" id)))
+       (append (list "show" id)
+               (when (beads-backend-cli-supports-option-p
+                      "show" "--include-dependents" beads-backend-bd)
+                 '("--include-dependents")))))
     ("ready"
      (beads-backend--build-cli-args "ready" args
                                     '(assignee priority limit sort parent)))

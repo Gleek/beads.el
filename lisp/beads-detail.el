@@ -27,6 +27,7 @@
 (require 'beads-client)
 (require 'beads-backend)
 (require 'beads-edit)
+(require 'beads-filter)
 (require 'seq)
 
 (declare-function vui-mount "vui")
@@ -270,7 +271,7 @@ Uses a single reusable buffer in a side window without focusing."
   "Navigate to the parent issue of the current issue."
   (interactive)
   (let* ((issue (beads-detail--require-issue))
-         (parent-id (alist-get 'parent_id issue)))
+         (parent-id (beads-client-issue-parent issue)))
     (unless parent-id
       (user-error "This issue has no parent"))
     (condition-case err
@@ -286,13 +287,10 @@ Filters the issue list to show only issues whose parent is this issue."
   (let* ((issue (beads-detail--require-issue))
          (id (alist-get 'id issue)))
     (require 'beads-list)
-    (require 'beads-filter)
     (beads-list)
-    (with-current-buffer (get-buffer "*Beads Issues*")
-      (setq-local beads-list--filter-state
-                  (plist-put beads-list--filter-state :parent-filter id))
-      (beads-list-refresh)
-      (message "Showing children of %s" id))))
+    (setq-local beads-list--filter (beads-filter-by-parent id))
+    (beads-list-refresh)
+    (message "Showing children of %s" id)))
 
 (defun beads-detail-add-comment ()
   "Add a comment to the current issue.
@@ -498,6 +496,12 @@ Uses CLI fallback since RPC does not support comment_add."
     (unless (string-empty-p acceptance)
       (beads-detail--insert-section "Acceptance Criteria" acceptance)))
 
+  (when-let ((children (beads-client-issue-relations issue 'dependents t)))
+    (insert (propertize "Subtasks:\n" 'face 'beads-detail-header-face))
+    (dolist (child children)
+      (beads-detail--insert-dep-link child))
+    (insert "\n"))
+
   (when-let ((comments (alist-get 'comments issue)))
     (when (> (length comments) 0)
       (beads-detail--insert-comments comments))))
@@ -519,7 +523,7 @@ Uses CLI fallback since RPC does not support comment_add."
         (created (alist-get 'created_at issue))
         (updated (alist-get 'updated_at issue))
         (labels (alist-get 'labels issue))
-        (parent-id (alist-get 'parent_id issue)))
+        (parent-id (beads-client-issue-parent issue)))
 
     (beads-detail--insert-field "Status" status)
     (insert "     ")
@@ -591,7 +595,7 @@ Uses CLI fallback since RPC does not support comment_add."
 
 (defun beads-detail--insert-dependencies (issue)
   "Insert dependencies section for ISSUE if any exist."
-  (when-let ((deps (alist-get 'dependencies issue)))
+  (when-let ((deps (beads-client-issue-relations issue 'dependencies)))
     (when (> (length deps) 0)
       (insert (propertize "Depends on: " 'face 'beads-detail-label-face))
       (insert "\n")
@@ -600,7 +604,7 @@ Uses CLI fallback since RPC does not support comment_add."
 
 (defun beads-detail--insert-dependents (issue)
   "Insert dependents section for ISSUE if any exist."
-  (when-let ((deps (alist-get 'dependents issue)))
+  (when-let ((deps (beads-client-issue-relations issue 'dependents)))
     (when (> (length deps) 0)
       (insert (propertize "Dependents: " 'face 'beads-detail-label-face))
       (insert "\n")

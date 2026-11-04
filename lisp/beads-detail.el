@@ -178,22 +178,10 @@ Derives from `vui-mode' and inherits keybindings from `beads-detail-mode'.
   (evil-set-initial-state 'beads-detail-vui-mode 'normal)
   (evil-make-overriding-map beads-detail-vui-mode-map 'normal))
 
-(defun beads-detail--reuse-window (buffer alist)
-  "Display BUFFER in an unpinned detail window, using display action ALIST."
-  (when-let ((window
-              (seq-find
-               (lambda (window)
-                 (and (not (window-dedicated-p window))
-                      (with-current-buffer (window-buffer window)
-                        (derived-mode-p 'beads-detail-mode 'beads-detail-vui-mode))))
-               (window-list))))
-    (with-selected-window window
-      (display-buffer-same-window buffer alist))))
-
 (defun beads-detail-open (issue)
   "Open ISSUE, reusing an existing detail window when possible.
-Creates a unique buffer per issue and focuses it.  Dedicated windows are
-preserved, allowing another issue to be displayed alongside them."
+Creates a unique buffer per issue and focuses it.  Older issue buffers
+remain available for manual comparison in split windows."
   (let* ((directory default-directory)
          (id (alist-get 'id issue))
          (buffer-name (format "*Beads Detail: %s*" id))
@@ -212,8 +200,9 @@ preserved, allowing another issue to be displayed alongside them."
             beads-detail--current-issue issue))
     (let ((window (display-buffer buffer
                                   '((display-buffer-reuse-window
-                                     beads-detail--reuse-window
+                                     display-buffer-reuse-mode-window
                                      display-buffer-below-selected)
+                                    (mode . (beads-detail-mode beads-detail-vui-mode))
                                     (window-height . 0.4)))))
       (when window
         (select-window window)))))

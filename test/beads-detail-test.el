@@ -831,7 +831,7 @@
                        '("child" "legacy")))))))
 
 (ert-deftest beads-detail-test-reuse-window-and-compare ()
-  "Both renderers reuse detail windows while preserving pinned comparisons."
+  "Both renderers reuse a window and retain buffers for manual comparison."
   (dolist (beads-detail-use-vui '(nil t))
     (let ((source (generate-new-buffer " *beads-window-source*"))
           (display-buffer-alist nil)
@@ -849,18 +849,15 @@
                 (beads-detail-open '((id . "window-two") (title . "Two") (priority . 2)))
                 (should (eq detail-window (selected-window)))
                 (should (= 2 (length (window-list))))
-                (set-window-dedicated-p detail-window t)
-                (select-window source-window)
-                (beads-detail-open '((id . "window-three") (title . "Three") (priority . 2)))
-                (should-not (eq detail-window (selected-window)))
-                (should (equal (buffer-name (window-buffer detail-window))
-                               "*Beads Detail: window-two*"))
-                (should (= 3 (length (window-list))))
-                (set-window-dedicated-p detail-window nil))))
+                (let ((comparison-window (split-window-right)))
+                  (set-window-buffer comparison-window "*Beads Detail: window-one*")
+                  (should (equal (buffer-name (window-buffer detail-window))
+                                 "*Beads Detail: window-two*"))
+                  (should (equal (buffer-name (window-buffer comparison-window))
+                                 "*Beads Detail: window-one*"))))))
         (dolist (buffer (list source
                               (get-buffer "*Beads Detail: window-one*")
-                              (get-buffer "*Beads Detail: window-two*")
-                              (get-buffer "*Beads Detail: window-three*")))
+                              (get-buffer "*Beads Detail: window-two*")))
           (when (buffer-live-p buffer) (kill-buffer buffer)))))))
 
 (provide 'beads-detail-test)

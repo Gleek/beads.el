@@ -190,10 +190,9 @@ With the built-in `:vc` keyword:
 | `?` | `beads-menu` | Show transient menu |
 | `q` | `quit-window` | Quit |
 
-Detail views reuse the same window for either renderer. To compare two issues,
-run `M-x toggle-window-dedicated` in the first detail window, then open another
-issue from the list. The first stays visible while the second opens in another
-window. Run the command again in the pinned window to allow reuse.
+Detail views reuse the same window for either renderer, keeping a buffer for
+each issue. To compare two issues, split with `C-x 3` (side by side) or `C-x 2`
+(stacked), then use `C-x b` to select an older detail buffer in either window.
 
 ### Form Editor (`beads-form-mode`)
 

@@ -26,6 +26,7 @@
 
 (require 'hierarchy)
 (require 'wid-edit)
+(require 'tree-widget)
 (require 'beads-client)
 (require 'beads-faces)
 
@@ -45,6 +46,18 @@
 
 (defvar-local beads-hierarchy--by-id nil
   "Hash table mapping issue IDs to issue data.")
+
+(defvar-local beads-hierarchy--refresh-process nil
+  "Pending issue-list request for this hierarchy buffer.")
+
+(defvar-local beads-hierarchy--refresh-token nil
+  "Identity of the current refresh, used to ignore obsolete results.")
+
+(defun beads-hierarchy--cancel-refresh ()
+  "Cancel any pending hierarchy refresh."
+  (setq beads-hierarchy--refresh-token nil)
+  (beads-backend-cancel beads-hierarchy--refresh-process)
+  (setq beads-hierarchy--refresh-process nil))
 
 (defvar beads-hierarchy-mode-map
   (let ((map (make-sparse-keymap)))
@@ -99,7 +112,9 @@ Returns sorted list of positions for widgets and buttons."
 (define-derived-mode beads-hierarchy-mode special-mode "Beads-Deps"
   "Major mode for displaying issue dependency trees.
 
-\\{beads-hierarchy-mode-map}")
+\\{beads-hierarchy-mode-map}"
+  (add-hook 'kill-buffer-hook #'beads-hierarchy--cancel-refresh nil t)
+  (add-hook 'change-major-mode-hook #'beads-hierarchy--cancel-refresh nil t))
 
 ;; Configure evil-mode IF user has it loaded (does not enable evil)
 (with-eval-after-load 'evil
@@ -141,81 +156,53 @@ Format: ID [type] title [status]"
         (beads-client-error
          (message "Failed to fetch issue: %s" (error-message-string err)))))))
 
-(defun beads-hierarchy--collect-ancestors (issue by-id)
-  "Recursively collect ancestors (dependencies) of ISSUE into BY-ID.
-Each ancestor is marked with beads--child-id pointing to its dependent."
-  (let ((dependencies (alist-get 'dependencies issue)))
-    (when (and dependencies (> (length dependencies) 0))
-      (seq-doseq (dep (append dependencies nil))
-        (let ((dep-id (alist-get 'id dep)))
-          (unless (gethash dep-id by-id)
-            (let ((dep-with-child (cons (cons 'beads--child-id (alist-get 'id issue)) dep)))
-              (puthash dep-id dep-with-child by-id))
-            (condition-case nil
-                (let ((full-dep (beads-client-show dep-id)))
-                  (puthash dep-id
-                           (cons (cons 'beads--child-id (alist-get 'id issue)) full-dep)
-                           by-id)
-                  (beads-hierarchy--collect-ancestors full-dep by-id))
-              (beads-client-error nil))))))))
-
-(defun beads-hierarchy--collect-descendants (issue by-id)
-  "Recursively collect descendants (dependents) of ISSUE into BY-ID.
-Each descendant is marked with beads--parent-id pointing to its blocker."
-  (let ((dependents (alist-get 'dependents issue)))
-    (when (and dependents (> (length dependents) 0))
-      (seq-doseq (dep (append dependents nil))
-        (let ((dep-id (alist-get 'id dep)))
-          (unless (gethash dep-id by-id)
-            (let ((dep-with-parent (cons (cons 'beads--parent-id (alist-get 'id issue)) dep)))
-              (puthash dep-id dep-with-parent by-id))
-            (condition-case nil
-                (let ((full-dep (beads-client-show dep-id)))
-                  (puthash dep-id
-                           (cons (cons 'beads--parent-id (alist-get 'id issue)) full-dep)
-                           by-id)
-                  (beads-hierarchy--collect-descendants full-dep by-id))
-              (beads-client-error nil))))))))
-
-(defun beads-hierarchy--build (issue-id)
-  "Build hierarchy for ISSUE-ID showing full bidirectional tree.
-Returns a cons of (hierarchy . by-id-hash).
-Shows ancestors (blockers) above and descendants (dependents) below."
-  (condition-case err
-      (let* ((root-issue (beads-client-show issue-id))
-             (h (hierarchy-new))
-             (by-id (make-hash-table :test 'equal)))
-
-        (puthash (alist-get 'id root-issue) root-issue by-id)
-
-        (beads-hierarchy--collect-ancestors root-issue by-id)
-        (beads-hierarchy--collect-descendants root-issue by-id)
-
-        (maphash (lambda (_id issue)
-                   (hierarchy-add-tree h issue
-                     (lambda (i)
-                       (beads-hierarchy--find-parent i by-id))))
-                 by-id)
-
-        (cons h by-id))
-    (beads-client-error
-     (message "Failed to fetch dependency tree: %s" (error-message-string err))
-     nil)))
-
-(defun beads-hierarchy--find-parent (issue by-id)
-  "Find parent of ISSUE in BY-ID hash table.
-For descendants, parent is beads--parent-id (the blocker).
-For ancestors, we look for issues that have this as beads--child-id."
-  (let ((parent-id (alist-get 'beads--parent-id issue))
-        (own-id (alist-get 'id issue)))
-    (if parent-id
-        (gethash parent-id by-id)
-      (let ((found nil))
-        (maphash (lambda (_id other)
-                   (when (equal (alist-get 'beads--child-id other) own-id)
-                     (setq found other)))
-                 by-id)
-        found))))
+(defun beads-hierarchy--build (issue-id issues)
+  "Build ISSUE-ID's ancestor and descendant tree from ISSUES.
+Return (hierarchy . by-id-hash).  Visit each issue once, including when
+relationships contain cycles or shared dependencies."
+  (let ((all (make-hash-table :test 'equal))
+        (parents (make-hash-table :test 'equal))
+        (children (make-hash-table :test 'equal))
+        (tree-parents (make-hash-table :test 'equal))
+        (by-id (make-hash-table :test 'equal))
+        (h (hierarchy-new)))
+    (seq-doseq (issue issues)
+      (let ((id (alist-get 'id issue)))
+        (puthash id issue all)
+        (dolist (parent
+                 (delete-dups
+                  (delq nil
+                        (cons (beads-client-issue-parent issue)
+                              (mapcar (lambda (dep)
+                                        (or (alist-get 'depends_on_id dep)
+                                            (alist-get 'id dep)))
+                                      (append (alist-get 'dependencies issue) nil))))))
+          (push parent (gethash id parents))
+          (push id (gethash parent children)))))
+    (unless (gethash issue-id all)
+      (signal 'beads-client-error (list (format "Issue not found: %s" issue-id))))
+    (puthash issue-id (gethash issue-id all) by-id)
+    (cl-labels
+        ((collect (links ancestors)
+           (let ((pending (list issue-id)))
+             (while pending
+               (let ((id (pop pending)))
+                 (dolist (next (gethash id links))
+                   (when (and (gethash next all) (not (gethash next by-id)))
+                     (puthash next (gethash next all) by-id)
+                     (if ancestors
+                         (unless (gethash id tree-parents)
+                           (puthash id next tree-parents))
+                       (puthash next id tree-parents))
+                     (push next pending))))))))
+      (collect parents t)
+      (collect children nil))
+    (maphash (lambda (_id issue)
+               (hierarchy-add-tree
+                h issue (lambda (item)
+                          (gethash (gethash (alist-get 'id item) tree-parents) by-id))))
+             by-id)
+    (cons h by-id)))
 
 (defun beads-hierarchy-goto-issue ()
   "Open detail view for issue at point."
@@ -239,17 +226,6 @@ For ancestors, we look for issues that have this as beads--child-id."
            (message "Failed to fetch issue: %s" (error-message-string err))))
       (message "No issue at point"))))
 
-(defun beads-hierarchy--expand-all ()
-  "Expand all tree nodes in current buffer."
-  (save-excursion
-    (goto-char (point-min))
-    (while (not (eobp))
-      (when-let ((widget (widget-at (point))))
-        (when (and (widget-get widget :tag)
-                   (not (widget-get widget :open)))
-          (widget-apply-action widget)))
-      (forward-line 1))))
-
 (defun beads-hierarchy--goto-issue (issue-id)
   "Move point to ISSUE-ID in the hierarchy buffer."
   (goto-char (point-min))
@@ -261,12 +237,7 @@ For ancestors, we look for issues that have this as beads--child-id."
   (interactive)
   (unless beads-hierarchy--root-id
     (user-error "No root issue set"))
-  (let ((saved-point (point))
-        (saved-start (window-start)))
-    (beads-hierarchy-show beads-hierarchy--root-id)
-    (goto-char (min saved-point (point-max)))
-    (when-let ((win (get-buffer-window (current-buffer))))
-      (set-window-start win (min saved-start (point-max))))))
+  (beads-hierarchy-show beads-hierarchy--root-id))
 
 ;;;###autoload
 (defun beads-hierarchy-show (issue-id)
@@ -280,29 +251,63 @@ For ancestors, we look for issues that have this as beads--child-id."
                 (tabulated-list-get-id))
            (tabulated-list-get-id))
           (t (read-string "Issue ID: ")))))
-  (let ((result (beads-hierarchy--build issue-id)))
-    (unless result
-      (user-error "Could not build dependency tree"))
-    (let* ((h (car result))
-           (by-id (cdr result))
-           (buffer-name (format "*Beads Deps: %s*" issue-id))
-           (buffer (get-buffer-create buffer-name)))
-      (when (zerop (hierarchy-length h))
-        (message "No dependencies found for %s" issue-id))
-      (hierarchy-tree-display h #'beads-hierarchy--labelfn buffer)
-      (with-current-buffer buffer
-        (beads-hierarchy-mode)
-        (setq beads-hierarchy--root-id issue-id)
-        (setq beads-hierarchy--hierarchy h)
-        (setq beads-hierarchy--by-id by-id)
-        (beads-hierarchy--expand-all)
-        (beads-hierarchy--goto-issue issue-id))
-      (let ((window (display-buffer buffer
-                                    '((display-buffer-in-side-window)
-                                      (side . right)
-                                      (window-width . 0.4)))))
-        (when window
-          (select-window window))))))
+  (let* ((directory default-directory)
+         (buffer (get-buffer-create (format "*Beads Deps: %s*" issue-id))))
+    (with-current-buffer buffer
+      (unless (derived-mode-p 'beads-hierarchy-mode)
+        (beads-hierarchy-mode))
+      (beads-hierarchy--cancel-refresh)
+      (setq default-directory directory
+            beads-hierarchy--root-id issue-id)
+      (let ((token (setq beads-hierarchy--refresh-token (list 'refresh))))
+        (setq beads-hierarchy--refresh-process
+              (beads-client-request-async
+               "list" nil
+               (lambda (issues err)
+                 (when (buffer-live-p buffer)
+                   (with-current-buffer buffer
+                     (when (eq token beads-hierarchy--refresh-token)
+                       (setq beads-hierarchy--refresh-process nil)
+                       (if err
+                           (message "Failed to fetch dependency tree: %s"
+                                    (error-message-string err))
+                         (condition-case err
+                             (beads-hierarchy--render issue-id issues)
+                           (beads-client-error
+                            (message "%s" (error-message-string err)))))))))))))
+    (let ((window (display-buffer buffer
+                                  '((display-buffer-in-side-window)
+                                    (side . right)
+                                    (window-width . 0.4)))))
+      (when window (select-window window)))))
+
+(defun beads-hierarchy--render (issue-id issues)
+  "Render ISSUE-ID's tree from ISSUES in the current hierarchy buffer."
+  (let* ((saved-point (and beads-hierarchy--hierarchy (point)))
+         (window (get-buffer-window (current-buffer)))
+         (saved-start (and window (window-start window)))
+         (result (beads-hierarchy--build issue-id issues))
+         (h (car result))
+         (inhibit-read-only t))
+    (erase-buffer)
+    (dolist (root (hierarchy-roots h))
+      (widget-create
+       (hierarchy-map-tree
+        (lambda (issue indent children)
+          (widget-convert 'tree-widget
+                          :tag (hierarchy-labelfn-to-string
+                                #'beads-hierarchy--labelfn issue indent)
+                          :open t :args children))
+        h root)))
+    (widget-setup)
+    (setq beads-hierarchy--root-id issue-id
+          beads-hierarchy--hierarchy h
+          beads-hierarchy--by-id (cdr result))
+    (if saved-point
+        (progn
+          (goto-char (min saved-point (point-max)))
+          (when window (set-window-start window (min saved-start (point-max)))))
+      (beads-hierarchy--goto-issue issue-id))))
 
 (provide 'beads-hierarchy)
 ;;; beads-hierarchy.el ends here

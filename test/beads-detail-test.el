@@ -830,5 +830,38 @@
                                  ((id . "other") (parent . "elsewhere")))))
                        '("child" "legacy")))))))
 
+(ert-deftest beads-detail-test-reuse-window-and-compare ()
+  "Both renderers reuse detail windows while preserving pinned comparisons."
+  (dolist (beads-detail-use-vui '(nil t))
+    (let ((source (generate-new-buffer " *beads-window-source*"))
+          (display-buffer-alist nil)
+          (display-buffer-overriding-action nil)
+          (display-buffer-base-action nil))
+      (unwind-protect
+          (save-window-excursion
+            (delete-other-windows)
+            (switch-to-buffer source)
+            (let ((source-window (selected-window)))
+              (beads-detail-open '((id . "window-one") (title . "One") (priority . 2)))
+              (let ((detail-window (selected-window)))
+                (should-not (eq detail-window source-window))
+                (select-window source-window)
+                (beads-detail-open '((id . "window-two") (title . "Two") (priority . 2)))
+                (should (eq detail-window (selected-window)))
+                (should (= 2 (length (window-list))))
+                (set-window-dedicated-p detail-window t)
+                (select-window source-window)
+                (beads-detail-open '((id . "window-three") (title . "Three") (priority . 2)))
+                (should-not (eq detail-window (selected-window)))
+                (should (equal (buffer-name (window-buffer detail-window))
+                               "*Beads Detail: window-two*"))
+                (should (= 3 (length (window-list))))
+                (set-window-dedicated-p detail-window nil))))
+        (dolist (buffer (list source
+                              (get-buffer "*Beads Detail: window-one*")
+                              (get-buffer "*Beads Detail: window-two*")
+                              (get-buffer "*Beads Detail: window-three*")))
+          (when (buffer-live-p buffer) (kill-buffer buffer)))))))
+
 (provide 'beads-detail-test)
 ;;; beads-detail-test.el ends here

@@ -860,5 +860,31 @@
                               (get-buffer "*Beads Detail: window-two*")))
           (when (buffer-live-p buffer) (kill-buffer buffer)))))))
 
+(ert-deftest beads-detail-test-preview-retains-resized-window ()
+  "Preview updates preserve manual resizing and keep focus in the list."
+  (dolist (beads-detail-use-vui '(nil t))
+    (let ((source (generate-new-buffer " *beads-preview-source*"))
+          (display-buffer-alist nil)
+          (display-buffer-overriding-action nil)
+          (display-buffer-base-action nil))
+      (unwind-protect
+          (save-window-excursion
+            (delete-other-windows)
+            (switch-to-buffer source)
+            (let ((source-window (selected-window)))
+              (beads-detail-show '((id . "preview-one") (title . "One") (priority . 2)))
+              (let ((preview-window (get-buffer-window "*Beads Preview*")))
+                (should (eq (window-parameter preview-window 'window-side) 'right))
+                (window-resize preview-window 5 t)
+                (let ((width (window-total-width preview-window)))
+                  (beads-detail-show '((id . "preview-two") (title . "Two") (priority . 2)))
+                  (should (eq preview-window (get-buffer-window "*Beads Preview*")))
+                  (should (= width (window-total-width preview-window)))
+                  (should (eq source-window (selected-window)))
+                  (with-current-buffer (window-buffer preview-window)
+                    (should (equal beads-detail--current-issue-id "preview-two")))))))
+        (when-let ((preview (get-buffer "*Beads Preview*"))) (kill-buffer preview))
+        (kill-buffer source)))))
+
 (provide 'beads-detail-test)
 ;;; beads-detail-test.el ends here

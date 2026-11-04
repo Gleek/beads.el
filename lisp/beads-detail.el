@@ -209,7 +209,8 @@ remain available for manual comparison in split windows."
 
 (defun beads-detail-show (issue)
   "Display ISSUE in preview buffer (for preview mode).
-Uses a single reusable buffer in a side window without focusing."
+Uses a single reusable buffer in a side window without focusing.
+An existing preview window retains its size and position."
   (let* ((directory default-directory)
          (id (alist-get 'id issue))
          (buffer (get-buffer-create "*Beads Preview*")))
@@ -225,9 +226,10 @@ Uses a single reusable buffer in a side window without focusing."
       (setq default-directory directory
             beads-detail--current-issue-id id
             beads-detail--current-issue issue))
-    (display-buffer buffer '((display-buffer-in-side-window)
-                             (side . right)
-                             (window-width . 0.4)))))
+    (or (get-buffer-window buffer (selected-frame))
+        (display-buffer buffer '((display-buffer-in-side-window)
+                                 (side . right)
+                                 (window-width . 0.4))))))
 
 (defun beads-detail--refresh-list-buffers ()
   "Refresh issue lists belonging to the current Beads workspace."
